@@ -1,0 +1,20 @@
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+
+# Python
+backend/__pycache__/
+worker/__pycache__/
+*.pyc
+*.pyo
+
+# Docker
+.env.local
+postgres_data/
+redis_data/
+minio_data/
+
+# IDE
+.vscode/
+.idea/

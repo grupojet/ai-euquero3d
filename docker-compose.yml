@@ -1,126 +1,80 @@
 version: "3.8"
 
 services:
-  # ── PostgreSQL ──
   postgres:
     image: postgres:16-alpine
     container_name: e3d-postgres
-    restart: unless-stopped
     environment:
       POSTGRES_USER: euquero3d
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-e3d_secure_2026}
+      POSTGRES_PASSWORD: euquero3d
       POSTGRES_DB: euquero3d_ai
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
-    networks:
-      - e3d-network
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U euquero3d -d euquero3d_ai"]
+      test: ["CMD-SHELL", "pg_isready -U euquero3d"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # ── Redis ──
   redis:
     image: redis:7-alpine
     container_name: e3d-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
-    networks:
-      - e3d-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
-  # ── MinIO (S3-compatible storage) ──
   minio:
     image: minio/minio:latest
     container_name: e3d-minio
-    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:-euquero3d}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-e3d_minio_2026}
+      MINIO_ROOT_USER: euquero3d
+      MINIO_ROOT_PASSWORD: euquero3d-secret
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    networks:
-      - e3d-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
 
-  # ── Backend API (FastAPI) ──
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: e3d-backend
-    restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://euquero3d:${DB_PASSWORD:-e3d_secure_2026}@postgres:5432/euquero3d_ai
-      - REDIS_URL=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_USER:-euquero3d}
-      - MINIO_SECRET_KEY=${MINIO_PASS:-e3d_minio_2026}
-      - SECRET_KEY=${SECRET_KEY:-euquero3d_super_secret_key_change_me}
-      - WORKER_TIMEOUT=600
-    volumes:
-      - ./backend/app:/app/app
-      - shared_storage:/app/storage
+      DATABASE_URL: postgresql://euquero3d:euquero3d@postgres:5432/euquero3d_ai
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: euquero3d
+      MINIO_SECRET_KEY: euquero3d-secret
+      MINIO_BUCKET: euquero3d-ai
     ports:
-      - "8000:8000"
-    networks:
-      - e3d-network
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
       minio:
-        condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  # ── Worker GPU (Hunyuan3D + TripoSR) ──
-  worker:
-    build:
-      context: ./worker
-      dockerfile: Dockerfile
-    container_name: e3d-worker
-    restart: unless-stopped
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - CUDA_VISIBLE_DEVICES=0
-      - REDIS_URL=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_USER:-euquero3d}
-      - MINIO_SECRET_KEY=${MINIO_PASS:-e3d_minio_2026}
-      - MODEL_CACHE=/models
-      - WORKER_CONCURRENCY=1
+        condition: service_started
     volumes:
-      - ./worker/app:/app/app
-      - model_cache:/models
-      - shared_storage:/app/storage
-    networks:
-      - e3d-network
+      - ./backend/app:/app/app
+
+  worker:
+    build: ./worker
+    container_name: e3d-worker
+    environment:
+      DATABASE_URL: postgresql://euquero3d:euquero3d@postgres:5432/euquero3d_ai
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: euquero3d
+      MINIO_SECRET_KEY: euquero3d-secret
+      MINIO_BUCKET: euquero3d-ai
     depends_on:
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - postgres
+      - redis
+      - minio
     deploy:
       resources:
         reservations:
@@ -129,44 +83,15 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # ── Frontend (Next.js) ──
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    build: ./frontend
     container_name: e3d-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    networks:
-      - e3d-network
-    depends_on:
-      - backend
-
-  # ── Nginx Reverse Proxy ──
-  nginx:
-    image: nginx:alpine
-    container_name: e3d-nginx
-    restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    networks:
-      - e3d-network
     depends_on:
-      - frontend
       - backend
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
-  model_cache:
-  shared_storage:
-
-networks:
-  e3d-network:
-    driver: bridge
