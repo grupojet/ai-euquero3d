@@ -1,0 +1,176 @@
+version: "3.8"
+
+# ═══════════════════════════════════════════
+# EUQUERO3D AI PLATFORM — Production (DigitalOcean)
+# Sem GPU local → Worker em modo CPU + fallback
+# Para GPU: use RunPod/Vast.ai worker remoto
+# ═══════════════════════════════════════════
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: e3d-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: euquero3d
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: euquero3d_ai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - e3d-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U euquero3d -d euquero3d_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: e3d-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - e3d-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: e3d-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
+    volumes:
+      - minio_data:/data
+    networks:
+      - e3d-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: e3d-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://euquero3d:${DB_PASSWORD}@postgres:5432/euquero3d_ai
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_USER}
+      - MINIO_SECRET_KEY=${MINIO_PASS}
+      - SECRET_KEY=${SECRET_KEY}
+      - WORKER_TIMEOUT=600
+      - ENV=production
+    volumes:
+      - shared_storage:/app/storage
+    networks:
+      - e3d-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && 
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 
+             --workers 2 --loop uvloop"
+
+  # ── Worker CPU (fallback mode — sem GPU) ──
+  # Para GPU real, use worker remoto em RunPod/Vast.ai
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.cpu
+    container_name: e3d-worker
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_USER}
+      - MINIO_SECRET_KEY=${MINIO_PASS}
+      - MODE=cpu_fallback
+      - HF_HOME=/models/cache
+    volumes:
+      - model_cache:/models
+      - shared_storage:/app/storage
+    networks:
+      - e3d-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: e3d-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=/api/v1
+    networks:
+      - e3d-network
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: e3d-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot_data:/etc/letsencrypt
+    networks:
+      - e3d-network
+    depends_on:
+      - frontend
+      - backend
+
+  # ── Certbot (SSL automático) ──
+  certbot:
+    image: certbot/certbot
+    container_name: e3d-certbot
+    volumes:
+      - certbot_data:/etc/letsencrypt
+      - ./nginx/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+    networks:
+      - e3d-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  model_cache:
+  shared_storage:
+  certbot_data:
+
+networks:
+  e3d-network:
+    driver: bridge
