@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08111e">
+  <title>JET 3D Engineer</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">JET</div>
+        <div><strong>JET 3D Engineer</strong><span>Engenharia paramétrica para manufatura</span></div>
+      </div>
+      <div class="health-pill" id="healthPill"><span></span><b>Verificando API</b></div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar panel">
+        <div class="eyebrow">PROJETO</div>
+        <h1>Nova engenharia</h1>
+        <p class="muted">Crie um projeto ou retome um ID existente.</p>
+        <form id="createProjectForm" class="stack">
+          <label>Nome do projeto<input id="projectName" required placeholder="Ex.: Caixa NOC - revisão A"></label>
+          <label>Impressora<select id="printerProfile"><option value="creality-k2-plus">Creality K2 Plus</option><option value="bambu-a1">Bambu A1</option></select></label>
+          <label>Material<select id="materialProfile"><option value="pla">PLA</option><option value="petg">PETG</option><option value="abs">ABS</option><option value="asa">ASA</option><option value="tpu">TPU</option></select></label>
+          <button class="btn primary" type="submit">Criar projeto</button>
+        </form>
+        <div class="divider"><span>ou</span></div>
+        <form id="loadProjectForm" class="stack compact">
+          <label>ID existente<input id="existingProjectId" placeholder="project-id"></label>
+          <button class="btn ghost" type="submit">Carregar projeto</button>
+        </form>
+        <div class="project-mini" id="projectMini"><span>Nenhum projeto carregado</span></div>
+      </aside>
+
+      <section class="content-grid">
+        <article class="panel hero-panel">
+          <div class="panel-head"><div><div class="eyebrow">COMANDO DE ENGENHARIA</div><h2>Descreva o que precisa ser construído</h2></div><span class="revision-badge" id="revisionBadge">r000</span></div>
+          <textarea id="instructionInput" rows="5" placeholder="Ex.: criar uma caixa eletrônica de 120 x 80 x 35 mm, parede de 2,4 mm..."></textarea>
+          <div class="action-row"><button class="btn primary" id="interpretBtn">Interpretar instrução</button><button class="btn ghost" id="refreshBtn">Atualizar projeto</button></div>
+        </article>
+
+        <article class="panel preview-panel">
+          <div class="panel-head"><div><div class="eyebrow">PRÉ-VISUALIZAÇÃO</div><h2>Envelope 3D esquemático</h2></div><span class="status subtle">Não é malha de fabricação</span></div>
+          <div class="preview-stage" id="previewStage"><div class="preview-placeholder"><div class="cube-icon">◇</div><b>Aguardando projeto</b><span>O envelope dimensional aparecerá aqui.</span></div></div>
+          <div class="dimension-strip" id="dimensionStrip"><span>X —</span><span>Y —</span><span>Z —</span></div>
+        </article>
+
+        <article class="panel" id="projectPanel">
+          <div class="panel-head"><div><div class="eyebrow">ESTADO ATUAL</div><h2>Projeto</h2></div></div>
+          <div class="kv-grid" id="projectDetails"><div><span>Projeto</span><b>—</b></div><div><span>Impressora</span><b>—</b></div><div><span>Material</span><b>—</b></div><div><span>Revisão</span><b>—</b></div></div>
+        </article>
+
+        <article class="panel" id="proposalPanel">
+          <div class="panel-head"><div><div class="eyebrow">PROPOSTA</div><h2>Alterações interpretadas</h2></div><span class="status" id="proposalStatus">Sem proposta</span></div>
+          <div id="proposalContent" class="empty-state">Envie uma instrução para gerar uma proposta de revisão.</div>
+          <div class="action-row hidden" id="proposalActions"><button class="btn primary" id="commitBtn">Confirmar revisão</button><button class="btn danger-ghost" id="discardBtn">Descartar</button></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><div><div class="eyebrow">VALIDAÇÃO</div><h2>Engenharia e manufatura</h2></div><div class="severity-counts"><span class="blocker" id="blockerCount">0</span><span class="warning" id="warningCount">0</span><span class="info" id="infoCount">0</span></div></div>
+          <div id="validationList" class="empty-state">A validação aparecerá após carregar um projeto.</div>
+        </article>
+
+        <article class="panel export-panel">
+          <div class="panel-head"><div><div class="eyebrow">EXPORTAÇÃO</div><h2>Prontidão para fabricação</h2></div><span class="status" id="exportStatus">Aguardando</span></div>
+          <div id="exportReadiness" class="check-list"></div>
+          <p class="note">STL e 3MF finais dependem da geometria validada no Blender e das assinaturas dos objetos. O navegador não gera uma malha de fabricação falsa.</p>
+        </article>
+
+        <article class="panel activity-panel">
+          <div class="panel-head"><div><div class="eyebrow">ATIVIDADE</div><h2>Log operacional</h2></div><button class="text-btn" id="clearLogBtn">Limpar</button></div>
+          <div class="activity-log" id="activityLog"><div><time>agora</time><span>Interface iniciada.</span></div></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
