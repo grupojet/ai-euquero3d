@@ -4,12 +4,15 @@ Invoked only as:
   blender --background --factory-startup --python scripts/blender_headless_worker.py -- JOB RESULT
 """
 import json
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "blender_addon"))
+
+os.environ["JET3D_HEADLESS_WORKER"] = "1"
 
 import bpy
 
