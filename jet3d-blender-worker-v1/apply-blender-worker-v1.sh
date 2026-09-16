@@ -8,10 +8,6 @@ BRANCH=jet3d-blender-worker-v1
 BASE_URL="https://raw.githubusercontent.com/grupojet/ai-euquero3d/${BRANCH}/jet3d-blender-worker-v1"
 STAGE=/tmp/jet3d-blender-worker-v1
 BACKUP="/opt/jet3d/backups/blender-worker-$(date +%Y%m%d%H%M%S)"
-ADDON_ARCHIVE=blender-addon-v1.tar.gz
-ADDON_B64=blender-addon-v1.tar.gz.b64
-ADDON_PARTS=(addon-part00.b64 addon-part01.b64 addon-part02.b64 addon-part03.b64)
-ADDON_SHA256=2587f5942c160cea6cbd2d5626af7da3911b9295b41ece6a5a55ebdcf4c90aad
 FILES=(
   engineering_service/app/blender/__init__.py
   engineering_service/app/blender/jobs.py
@@ -26,6 +22,18 @@ FILES=(
   web/js/api.js
   web/js/app.js
   deploy/install-web-ui.sh
+  blender_addon/jet_3d_engineer/__init__.py
+  blender_addon/jet_3d_engineer/geometry/__init__.py
+  blender_addon/jet_3d_engineer/geometry/cuts.py
+  blender_addon/jet_3d_engineer/geometry/executor.py
+  blender_addon/jet_3d_engineer/geometry/finishing.py
+  blender_addon/jet_3d_engineer/geometry/markings.py
+  blender_addon/jet_3d_engineer/geometry/primitives.py
+  blender_addon/jet_3d_engineer/geometry/signature.py
+  blender_addon/jet_3d_engineer/export/__init__.py
+  blender_addon/jet_3d_engineer/export/stl.py
+  blender_addon/jet_3d_engineer/validation/__init__.py
+  blender_addon/jet_3d_engineer/validation/mesh_checks.py
 )
 
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
@@ -45,40 +53,22 @@ for rel in "${FILES[@]}"; do
   mkdir -p "$STAGE/$(dirname "$rel")"
   curl -fsSL --retry 3 "$BASE_URL/files/$rel" -o "$STAGE/$rel"
 done
-for part in "${ADDON_PARTS[@]}"; do
-  curl -fsSL --retry 3 "$BASE_URL/$part" -o "$STAGE/$part"
-done
 curl -fsSL --retry 3 "$BASE_URL/manifest.sha256" -o "$STAGE/manifest.sha256"
 (
   cd "$STAGE"
   sha256sum -c manifest.sha256
 )
-cat "$STAGE"/addon-part*.b64 > "$STAGE/blender-addon-v1.tar.gz.b64"
-base64 -d "$STAGE/blender-addon-v1.tar.gz.b64" > "$STAGE/blender-addon-v1.tar.gz"
-echo "$ADDON_SHA256  $STAGE/$ADDON_ARCHIVE" | sha256sum -c -
 
-for rel in \
-  engineering_service/app/blender/__init__.py \
-  engineering_service/app/blender/jobs.py \
-  engineering_service/app/blender/service.py \
-  engineering_service/app/api/manufacturing.py \
-  engineering_service/app/main.py \
-  engineering_service/app/settings.py \
-  scripts/blender_headless_worker.py; do
+for rel in "${FILES[@]}"; do
+  case "$rel" in
+    web/*|deploy/*) continue ;;
+  esac
   if [ -f "$APP_DIR/$rel" ]; then
     mkdir -p "$BACKUP/app/$(dirname "$rel")"
     cp -a "$APP_DIR/$rel" "$BACKUP/app/$rel"
   fi
   install -D -m 0644 "$STAGE/$rel" "$APP_DIR/$rel"
 done
-
-if [ -d "$APP_DIR/blender_addon/jet_3d_engineer" ]; then
-  mkdir -p "$BACKUP/app/blender_addon"
-  cp -a "$APP_DIR/blender_addon/jet_3d_engineer" "$BACKUP/app/blender_addon/"
-fi
-rm -rf "$APP_DIR/blender_addon/jet_3d_engineer"
-mkdir -p "$APP_DIR/blender_addon"
-tar -xzf "$STAGE/blender-addon-v1.tar.gz" -C "$APP_DIR"
 test -f "$APP_DIR/blender_addon/jet_3d_engineer/geometry/executor.py"
 
 if [ -d /var/www/jet3d ]; then
