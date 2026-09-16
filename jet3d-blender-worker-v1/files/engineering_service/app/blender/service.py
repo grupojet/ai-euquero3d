@@ -107,6 +107,8 @@ class ManufacturingService:
                 raise ValueError("manufacturing validation contains BLOCKER issues")
             if not export_gate(issues, acknowledged):
                 self._set_status(project_id, "awaiting_warning_ack", revision=revision, issues=issues)
+                if export_dir.exists():
+                    shutil.rmtree(export_dir, ignore_errors=True)
                 raise ValueError("manufacturing validation warnings require acknowledgement")
 
             export_dir.mkdir(parents=True, exist_ok=True)
