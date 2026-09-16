@@ -8,6 +8,7 @@ BRANCH=jet3d-blender-worker-v1
 BASE_URL="https://raw.githubusercontent.com/grupojet/ai-euquero3d/${BRANCH}/jet3d-blender-worker-v1"
 STAGE=/tmp/jet3d-blender-worker-v1
 BACKUP="/opt/jet3d/backups/blender-worker-$(date +%Y%m%d%H%M%S)"
+ADDON_ARCHIVE=blender-addon-v1.tar.gz
 FILES=(
   engineering_service/app/blender/__init__.py
   engineering_service/app/blender/jobs.py
@@ -41,6 +42,7 @@ for rel in "${FILES[@]}"; do
   mkdir -p "$STAGE/$(dirname "$rel")"
   curl -fsSL --retry 3 "$BASE_URL/files/$rel" -o "$STAGE/$rel"
 done
+curl -fsSL --retry 3 "$BASE_URL/$ADDON_ARCHIVE" -o "$STAGE/$ADDON_ARCHIVE"
 curl -fsSL --retry 3 "$BASE_URL/manifest.sha256" -o "$STAGE/manifest.sha256"
 (
   cd "$STAGE"
@@ -61,6 +63,16 @@ for rel in \
   fi
   install -D -m 0644 "$STAGE/$rel" "$APP_DIR/$rel"
 done
+
+if [ -d "$APP_DIR/blender_addon/jet_3d_engineer" ]; then
+  mkdir -p "$BACKUP/app/blender_addon"
+  cp -a "$APP_DIR/blender_addon/jet_3d_engineer" "$BACKUP/app/blender_addon/"
+fi
+rm -rf "$APP_DIR/blender_addon/jet_3d_engineer"
+mkdir -p "$APP_DIR/blender_addon"
+tar -xzf "$STAGE/blender-addon-v1.tar.gz" -C "$APP_DIR"
+test -f "$APP_DIR/blender_addon/jet_3d_engineer/geometry/executor.py"
+
 if [ -d /var/www/jet3d ]; then
   cp -a /var/www/jet3d/. "$BACKUP/web/"
 fi
@@ -101,7 +113,17 @@ cat > "$SMOKE/job.json" <<EOF
   "asset_registry": {}
 }
 EOF
-blender --background --factory-startup --python "$APP_DIR/scripts/blender_headless_worker.py" -- "$SMOKE/job.json" "$SMOKE/result.json" >/tmp/jet3d-blender-smoke.log 2>&1
+if ! blender --background --factory-startup --python "$APP_DIR/scripts/blender_headless_worker.py" -- "$SMOKE/job.json" "$SMOKE/result.json" >/tmp/jet3d-blender-smoke.log 2>&1; then
+  echo "=== BLENDER SMOKE LOG ===" >&2
+  cat /tmp/jet3d-blender-smoke.log >&2
+  exit 1
+fi
+if [ ! -f "$SMOKE/result.json" ]; then
+  echo "Blender smoke test did not produce result.json" >&2
+  echo "=== BLENDER SMOKE LOG ===" >&2
+  cat /tmp/jet3d-blender-smoke.log >&2
+  exit 1
+fi
 "$VENV/bin/python" - <<'PY'
 import json
 from pathlib import Path
