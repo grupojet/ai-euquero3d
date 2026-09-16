@@ -9,6 +9,9 @@ BASE_URL="https://raw.githubusercontent.com/grupojet/ai-euquero3d/${BRANCH}/jet3
 STAGE=/tmp/jet3d-blender-worker-v1
 BACKUP="/opt/jet3d/backups/blender-worker-$(date +%Y%m%d%H%M%S)"
 ADDON_ARCHIVE=blender-addon-v1.tar.gz
+ADDON_B64=blender-addon-v1.tar.gz.b64
+ADDON_PARTS=(addon-part00.b64 addon-part01.b64 addon-part02.b64 addon-part03.b64)
+ADDON_SHA256=2587f5942c160cea6cbd2d5626af7da3911b9295b41ece6a5a55ebdcf4c90aad
 FILES=(
   engineering_service/app/blender/__init__.py
   engineering_service/app/blender/jobs.py
@@ -42,12 +45,17 @@ for rel in "${FILES[@]}"; do
   mkdir -p "$STAGE/$(dirname "$rel")"
   curl -fsSL --retry 3 "$BASE_URL/files/$rel" -o "$STAGE/$rel"
 done
-curl -fsSL --retry 3 "$BASE_URL/$ADDON_ARCHIVE" -o "$STAGE/$ADDON_ARCHIVE"
+for part in "${ADDON_PARTS[@]}"; do
+  curl -fsSL --retry 3 "$BASE_URL/$part" -o "$STAGE/$part"
+done
 curl -fsSL --retry 3 "$BASE_URL/manifest.sha256" -o "$STAGE/manifest.sha256"
 (
   cd "$STAGE"
   sha256sum -c manifest.sha256
 )
+cat "$STAGE"/addon-part*.b64 > "$STAGE/blender-addon-v1.tar.gz.b64"
+base64 -d "$STAGE/blender-addon-v1.tar.gz.b64" > "$STAGE/blender-addon-v1.tar.gz"
+echo "$ADDON_SHA256  $STAGE/$ADDON_ARCHIVE" | sha256sum -c -
 
 for rel in \
   engineering_service/app/blender/__init__.py \
